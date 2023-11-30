@@ -211,7 +211,7 @@ static void ThemeCalculateCaptionButtonsPosEx(WINDOWINFO wi, HWND hWnd, HTHEME h
 {
     PWND_DATA pwndData;
     DWORD style;
-    INT ButtonWidth, ButtonHeight, iPartId, i;
+    INT captionBtnWidth, captionBtnHeight, iPartId, i;
     RECT rcCurrent;
     SIZE ButtonSize;
 
@@ -245,20 +245,20 @@ static void ThemeCalculateCaptionButtonsPosEx(WINDOWINFO wi, HWND hWnd, HTHEME h
 
     GetThemePartSize(htheme, NULL, iPartId, 0, NULL, TS_MIN, &ButtonSize);
 
-    ButtonWidth = MulDiv(ButtonSize.cx, buttonHeight, ButtonSize.cy);
+    captionBtnWidth = MulDiv(ButtonSize.cx, buttonHeight, ButtonSize.cy);
 
-    ButtonHeight = buttonHeight - 4;
-    ButtonWidth -= 4;
+    captionBtnHeight = buttonHeight - 4;
+    captionBtnWidth -= 4;
 
     for (i = CLOSEBUTTON; i <= HELPBUTTON; i++)
     {
         SetRect(&pwndData->rcCaptionButtons[i],
-                rcCurrent.right - ButtonWidth,
+                rcCurrent.right - captionBtnWidth,
                 rcCurrent.top,
                 rcCurrent.right,
-                rcCurrent.top + ButtonHeight);
+                rcCurrent.top + captionBtnHeight);
 
-        rcCurrent.right -= ButtonWidth + BUTTON_GAP_SIZE;
+        rcCurrent.right -= captionBtnWidth + BUTTON_GAP_SIZE;
     }
 }
 
@@ -1279,14 +1279,11 @@ HRESULT WINAPI DrawNCPreview(HDC hDC,
     DWORD dwExStyleNew = WS_EX_DLGMODALFRAME;
     SetWindowLongPtr(hwndDummy, GWL_EXSTYLE, dwExStyleNew);
 
-    if (GetWindowInfo(hwndDummy, &context.wi))
-    {
-        context.wi.dwStyle = dwStyleNew;
-        context.wi.dwExStyle = dwExStyleNew;
-    }
-    else
+    if (!GetWindowInfo(hwndDummy, &context.wi))
         return E_FAIL;
-    
+
+    context.wi.dwStyle = dwStyleNew;
+    context.wi.dwExStyle = dwExStyleNew;
 
     INT msgBoxHalfWidth = 75;
     INT msgBoxHCenter = rcAdjPreview.left + (previewWidth / 2);
