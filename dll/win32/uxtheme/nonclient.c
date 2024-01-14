@@ -1113,9 +1113,7 @@ DrawWindowForNCPreview(
     }
 
     RECT rcWindowPrev = { pcontext->wi.rcWindow.left, pcontext->wi.rcWindow.top, pcontext->wi.rcWindow.right, pcontext->wi.rcWindow.bottom };
-    UNREFERENCED_PARAMETER(rcWindowPrev);
     RECT rcClientPrev = { pcontext->wi.rcClient.left, pcontext->wi.rcClient.top, pcontext->wi.rcClient.right, pcontext->wi.rcClient.bottom };
-    UNREFERENCED_PARAMETER(rcClientPrev);
     SetWindowPos(pcontext->hWnd, NULL, left, top, right - left, bottom - top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_DRAWFRAME | SWP_NOCOPYBITS);
     RECT rcWindowNew = { left, top, right, bottom };
     pcontext->wi.rcWindow = rcWindowNew;
@@ -1132,10 +1130,6 @@ DrawWindowForNCPreview(
     INT titleBarInset = pcontext->CaptionHeight; // + pcontext->wi.cyWindowBorders;
     INT rightBorderInset = pcontext->wi.cxWindowBorders;
     INT bottomBorderInset = pcontext->wi.cyWindowBorders;
-    UNREFERENCED_PARAMETER(leftBorderInset);
-    UNREFERENCED_PARAMETER(titleBarInset);
-    UNREFERENCED_PARAMETER(rightBorderInset);
-    UNREFERENCED_PARAMETER(bottomBorderInset);
 
     RECT rcClientNew;
     if (GetWindowRect(pcontext->hWnd, &rcClientNew))
