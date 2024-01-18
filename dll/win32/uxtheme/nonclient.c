@@ -1191,6 +1191,10 @@ DrawWindowForNCPreview(
     }
 }
 
+#define NC_PREVIEW_MSGBOX_HALF_WIDTH 75
+#define NC_PREVIEW_MSGBOX_OFFSET_X -29
+#define NC_PREVIEW_MSGBOX_OFFSET_Y 71
+
 HRESULT WINAPI DrawNCPreview(HDC hDC, 
                              DWORD DNCP_Flag,
                              LPRECT prcPreview, 
@@ -1279,13 +1283,12 @@ HRESULT WINAPI DrawNCPreview(HDC hDC,
     context.wi.dwStyle = dwStyleNew;
     context.wi.dwExStyle = dwExStyleNew;
 
-    INT msgBoxHalfWidth = 75;
     INT msgBoxHCenter = rcAdjPreview.left + (previewWidth / 2);
     INT msgBoxVCenter = rcAdjPreview.top + (previewHeight / 2);
     if (previewHeight % 2 != 0)
         msgBoxVCenter++;
 
-    DrawWindowForNCPreview(hDC, &context, msgBoxHCenter - msgBoxHalfWidth, msgBoxVCenter - 29, msgBoxHCenter + msgBoxHalfWidth, msgBoxVCenter + 71, FALSE, &rcWindowClient);
+    DrawWindowForNCPreview(hDC, &context, msgBoxHCenter - NC_PREVIEW_MSGBOX_HALF_WIDTH, msgBoxVCenter + NC_PREVIEW_MSGBOX_OFFSET_X, msgBoxHCenter + NC_PREVIEW_MSGBOX_HALF_WIDTH, msgBoxVCenter + NC_PREVIEW_MSGBOX_OFFSET_Y, FALSE, &rcWindowClient);
     DrawThemeBackground(context.theme, hDC, WP_DIALOG, 0, &rcWindowClient, NULL);
 
     /* Draw preview dialog button */
@@ -1294,7 +1297,7 @@ HRESULT WINAPI DrawNCPreview(HDC hDC,
     {
         INT btnCenterH = rcWindowClient.left + ((rcWindowClient.right - rcWindowClient.left) / 2);
         INT btnCenterV = rcWindowClient.top + ((rcWindowClient.bottom - rcWindowClient.top) / 2);
-        RECT rcBtn = { btnCenterH - 40, btnCenterV - 15, btnCenterH + 40, btnCenterV + 15};
+        RECT rcBtn = {btnCenterH - 40, btnCenterV - 15, btnCenterH + 40, btnCenterV + 15};
         int btnPart = BP_PUSHBUTTON;
         int btnState = PBS_DEFAULTED;
         DrawThemeBackground(hBtnTheme, hDC, btnPart, btnState, &rcBtn, NULL);
