@@ -1103,20 +1103,24 @@ DrawWindowForNCPreview(
     pcontext->CaptionHeight = pcontext->wi.cyWindowBorders + GetThemeSysSize(pcontext->theme, dwExStyle & WS_EX_TOOLWINDOW ? SM_CYSMSIZE : SM_CYSIZE);
     /* FIXME: still need to use ncmetrics from parameters for window border width */
 
-    dummyScrollInfo.fMask = SIF_DISABLENOSCROLL;
-
-    BOOL hasVScrollBar = dwStyle & WS_VSCROLL;
-    if (hasVScrollBar)
-    {
-        EnableScrollBar(pcontext->hWnd, SB_VERT, ESB_DISABLE_BOTH);
-        SetScrollInfo(pcontext->hWnd, SB_VERT, &dummyScrollInfo, TRUE);
-    }
-
     RECT rcWindowPrev = { pcontext->wi.rcWindow.left, pcontext->wi.rcWindow.top, pcontext->wi.rcWindow.right, pcontext->wi.rcWindow.bottom };
     RECT rcClientPrev = { pcontext->wi.rcClient.left, pcontext->wi.rcClient.top, pcontext->wi.rcClient.right, pcontext->wi.rcClient.bottom };
     SetWindowPos(pcontext->hWnd, NULL, left, top, right - left, bottom - top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_DRAWFRAME | SWP_NOCOPYBITS);
     RECT rcWindowNew = { left, top, right, bottom };
     pcontext->wi.rcWindow = rcWindowNew;
+
+    BOOL hasVScrollBar = dwStyle & WS_VSCROLL;
+    if (hasVScrollBar)
+    {
+        EnableScrollBar(pcontext->hWnd, SB_VERT, ESB_ENABLE_BOTH);
+
+        dummyScrollInfo.cbSize = sizeof(SCROLLINFO);
+        dummyScrollInfo.fMask = SIF_DISABLENOSCROLL | SIF_POS | SIF_RANGE;
+        dummyScrollInfo.nMin = 0;
+        dummyScrollInfo.nMax = rcWindowNew.bottom - rcWindowNew.top;
+        dummyScrollInfo.nPos = 0;
+        SetScrollInfo(pcontext->hWnd, SB_VERT, &dummyScrollInfo, TRUE);
+    }
 
     SetViewportOrgEx(hDC, rcWindowNew.left, rcWindowNew.top, NULL);
 
