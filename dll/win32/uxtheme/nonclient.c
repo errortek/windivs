@@ -1149,7 +1149,7 @@ DrawWindowForNCPreview(
     {
         SCROLLBARINFO sbi;
         sbi.cbSize = sizeof(sbi);
-        GetScrollBarInfo(pcontext->hWnd, SCROLL_getObjectId(SB_VERT), &sbi);
+        GetScrollBarInfo(pcontext->hWnd, OBJID_VSCROLL, &sbi);
         INT scWidth = sbi.rcScrollBar.right - sbi.rcScrollBar.left;
 
         sbi.rcScrollBar.right = rcClientNew.right;
