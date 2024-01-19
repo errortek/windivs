@@ -1167,19 +1167,10 @@ DrawWindowForNCPreview(
     }
     pcontext->wi.rcClient = rcClientNew;
 
-    SelectObject(hDC, GetThemeSysColorBrush(pcontext->theme, COLOR_WINDOW));
-    HPEN pen = CreatePen(PS_NULL, 0, RGB(0,0,0));
-    SelectObject(hDC, pen);
-
     OffsetRect(&rcClientNew, -pcontext->wi.rcWindow.left, -pcontext->wi.rcWindow.top);
-    if (!(dwExStyle & WS_EX_DLGMODALFRAME))
-    {
-        rcClientNew.right++;
-        rcClientNew.bottom++;
-    }
-    pcontext->wi.rcClient = rcClientNew;
+    
     if (drawClientAreaColor)
-        Rectangle(hDC, rcClientNew.left, rcClientNew.top, rcClientNew.right, rcClientNew.bottom);
+        FillRect(hDC, &rcClientNew, (HBRUSH)(COLOR_WINDOW + 1));
 
     pcontext->wi.rcWindow = rcWindowPrev;
     pcontext->wi.rcClient = rcClientPrev;
