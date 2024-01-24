@@ -211,7 +211,7 @@ static void ThemeCalculateCaptionButtonsPosEx(WINDOWINFO wi, HWND hWnd, HTHEME h
 {
     PWND_DATA pwndData;
     DWORD style;
-    INT ButtonWidth, ButtonHeight, iPartId, i;
+    INT captionBtnWidth, captionBtnHeight, iPartId, i;
     RECT rcCurrent;
     SIZE ButtonSize;
 
@@ -245,20 +245,20 @@ static void ThemeCalculateCaptionButtonsPosEx(WINDOWINFO wi, HWND hWnd, HTHEME h
 
     GetThemePartSize(htheme, NULL, iPartId, 0, NULL, TS_MIN, &ButtonSize);
 
-    ButtonWidth = MulDiv(ButtonSize.cx, buttonHeight, ButtonSize.cy);
+    captionBtnWidth = MulDiv(ButtonSize.cx, buttonHeight, ButtonSize.cy);
 
-    ButtonHeight = buttonHeight - 4;
-    ButtonWidth -= 4;
+    captionBtnHeight = buttonHeight - 4;
+    captionBtnWidth -= 4;
 
     for (i = CLOSEBUTTON; i <= HELPBUTTON; i++)
     {
         SetRect(&pwndData->rcCaptionButtons[i],
-                rcCurrent.right - ButtonWidth,
+                rcCurrent.right - captionBtnWidth,
                 rcCurrent.top,
                 rcCurrent.right,
-                rcCurrent.top + ButtonHeight);
+                rcCurrent.top + captionBtnHeight);
 
-        rcCurrent.right -= ButtonWidth + BUTTON_GAP_SIZE;
+        rcCurrent.right -= captionBtnWidth + BUTTON_GAP_SIZE;
     }
 }
 
@@ -1103,22 +1103,24 @@ DrawWindowForNCPreview(
     pcontext->CaptionHeight = pcontext->wi.cyWindowBorders + GetThemeSysSize(pcontext->theme, dwExStyle & WS_EX_TOOLWINDOW ? SM_CYSMSIZE : SM_CYSIZE);
     /* FIXME: still need to use ncmetrics from parameters for window border width */
 
-    dummyScrollInfo.fMask = SIF_DISABLENOSCROLL;
+    RECT rcWindowPrev = { pcontext->wi.rcWindow.left, pcontext->wi.rcWindow.top, pcontext->wi.rcWindow.right, pcontext->wi.rcWindow.bottom };
+    RECT rcClientPrev = { pcontext->wi.rcClient.left, pcontext->wi.rcClient.top, pcontext->wi.rcClient.right, pcontext->wi.rcClient.bottom };
+    SetWindowPos(pcontext->hWnd, NULL, left, top, right - left, bottom - top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_DRAWFRAME | SWP_NOCOPYBITS);
+    RECT rcWindowNew = { left, top, right, bottom };
+    pcontext->wi.rcWindow = rcWindowNew;
 
     BOOL hasVScrollBar = dwStyle & WS_VSCROLL;
     if (hasVScrollBar)
     {
-        EnableScrollBar(pcontext->hWnd, SB_VERT, ESB_DISABLE_BOTH);
+        EnableScrollBar(pcontext->hWnd, SB_VERT, ESB_ENABLE_BOTH);
+
+        dummyScrollInfo.cbSize = sizeof(SCROLLINFO);
+        dummyScrollInfo.fMask = SIF_DISABLENOSCROLL | SIF_POS | SIF_RANGE;
+        dummyScrollInfo.nMin = 0;
+        dummyScrollInfo.nMax = rcWindowNew.bottom - rcWindowNew.top;
+        dummyScrollInfo.nPos = 0;
         SetScrollInfo(pcontext->hWnd, SB_VERT, &dummyScrollInfo, TRUE);
     }
-
-    RECT rcWindowPrev = { pcontext->wi.rcWindow.left, pcontext->wi.rcWindow.top, pcontext->wi.rcWindow.right, pcontext->wi.rcWindow.bottom };
-    UNREFERENCED_PARAMETER(rcWindowPrev);
-    RECT rcClientPrev = { pcontext->wi.rcClient.left, pcontext->wi.rcClient.top, pcontext->wi.rcClient.right, pcontext->wi.rcClient.bottom };
-    UNREFERENCED_PARAMETER(rcClientPrev);
-    SetWindowPos(pcontext->hWnd, NULL, left, top, right - left, bottom - top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_DRAWFRAME | SWP_NOCOPYBITS);
-    RECT rcWindowNew = { left, top, right, bottom };
-    pcontext->wi.rcWindow = rcWindowNew;
 
     SetViewportOrgEx(hDC, rcWindowNew.left, rcWindowNew.top, NULL);
 
@@ -1132,10 +1134,6 @@ DrawWindowForNCPreview(
     INT titleBarInset = pcontext->CaptionHeight; // + pcontext->wi.cyWindowBorders;
     INT rightBorderInset = pcontext->wi.cxWindowBorders;
     INT bottomBorderInset = pcontext->wi.cyWindowBorders;
-    UNREFERENCED_PARAMETER(leftBorderInset);
-    UNREFERENCED_PARAMETER(titleBarInset);
-    UNREFERENCED_PARAMETER(rightBorderInset);
-    UNREFERENCED_PARAMETER(bottomBorderInset);
 
     RECT rcClientNew;
     if (GetWindowRect(pcontext->hWnd, &rcClientNew))
@@ -1155,7 +1153,7 @@ DrawWindowForNCPreview(
     {
         SCROLLBARINFO sbi;
         sbi.cbSize = sizeof(sbi);
-        GetScrollBarInfo(pcontext->hWnd, SCROLL_getObjectId(SB_VERT), &sbi);
+        GetScrollBarInfo(pcontext->hWnd, OBJID_VSCROLL, &sbi);
         INT scWidth = sbi.rcScrollBar.right - sbi.rcScrollBar.left;
 
         sbi.rcScrollBar.right = rcClientNew.right;
@@ -1169,19 +1167,10 @@ DrawWindowForNCPreview(
     }
     pcontext->wi.rcClient = rcClientNew;
 
-    SelectObject(hDC, GetThemeSysColorBrush(pcontext->theme, COLOR_WINDOW));
-    HPEN pen = CreatePen(PS_NULL, 0, RGB(0,0,0));
-    SelectObject(hDC, pen);
-
     OffsetRect(&rcClientNew, -pcontext->wi.rcWindow.left, -pcontext->wi.rcWindow.top);
-    if (!(dwExStyle & WS_EX_DLGMODALFRAME))
-    {
-        rcClientNew.right++;
-        rcClientNew.bottom++;
-    }
-    pcontext->wi.rcClient = rcClientNew;
+    
     if (drawClientAreaColor)
-        Rectangle(hDC, rcClientNew.left, rcClientNew.top, rcClientNew.right, rcClientNew.bottom);
+        FillRect(hDC, &rcClientNew, (HBRUSH)(COLOR_WINDOW + 1));
 
     pcontext->wi.rcWindow = rcWindowPrev;
     pcontext->wi.rcClient = rcClientPrev;
@@ -1196,6 +1185,10 @@ DrawWindowForNCPreview(
         OffsetRect(prcClient, -offsetX, -offsetY);
     }
 }
+
+#define NC_PREVIEW_MSGBOX_HALF_WIDTH 75
+#define NC_PREVIEW_MSGBOX_OFFSET_X -29
+#define NC_PREVIEW_MSGBOX_OFFSET_Y 71
 
 HRESULT WINAPI DrawNCPreview(HDC hDC, 
                              DWORD DNCP_Flag,
@@ -1279,22 +1272,16 @@ HRESULT WINAPI DrawNCPreview(HDC hDC,
     DWORD dwExStyleNew = WS_EX_DLGMODALFRAME;
     SetWindowLongPtr(hwndDummy, GWL_EXSTYLE, dwExStyleNew);
 
-    if (GetWindowInfo(hwndDummy, &context.wi))
-    {
-        context.wi.dwStyle = dwStyleNew;
-        context.wi.dwExStyle = dwExStyleNew;
-    }
-    else
+    if (!GetWindowInfo(hwndDummy, &context.wi))
         return E_FAIL;
-    
 
-    INT msgBoxHalfWidth = 75;
+    context.wi.dwStyle = dwStyleNew;
+    context.wi.dwExStyle = dwExStyleNew;
+
     INT msgBoxHCenter = rcAdjPreview.left + (previewWidth / 2);
     INT msgBoxVCenter = rcAdjPreview.top + (previewHeight / 2);
-    if (previewHeight % 2 != 0)
-        msgBoxVCenter++;
 
-    DrawWindowForNCPreview(hDC, &context, msgBoxHCenter - msgBoxHalfWidth, msgBoxVCenter - 29, msgBoxHCenter + msgBoxHalfWidth, msgBoxVCenter + 71, FALSE, &rcWindowClient);
+    DrawWindowForNCPreview(hDC, &context, msgBoxHCenter - NC_PREVIEW_MSGBOX_HALF_WIDTH, msgBoxVCenter + NC_PREVIEW_MSGBOX_OFFSET_X, msgBoxHCenter + NC_PREVIEW_MSGBOX_HALF_WIDTH, msgBoxVCenter + NC_PREVIEW_MSGBOX_OFFSET_Y, FALSE, &rcWindowClient);
     DrawThemeBackground(context.theme, hDC, WP_DIALOG, 0, &rcWindowClient, NULL);
 
     /* Draw preview dialog button */
@@ -1303,7 +1290,7 @@ HRESULT WINAPI DrawNCPreview(HDC hDC,
     {
         INT btnCenterH = rcWindowClient.left + ((rcWindowClient.right - rcWindowClient.left) / 2);
         INT btnCenterV = rcWindowClient.top + ((rcWindowClient.bottom - rcWindowClient.top) / 2);
-        RECT rcBtn = { btnCenterH - 40, btnCenterV - 15, btnCenterH + 40, btnCenterV + 15};
+        RECT rcBtn = {btnCenterH - 40, btnCenterV - 15, btnCenterH + 40, btnCenterV + 15};
         int btnPart = BP_PUSHBUTTON;
         int btnState = PBS_DEFAULTED;
         DrawThemeBackground(hBtnTheme, hDC, btnPart, btnState, &rcBtn, NULL);
