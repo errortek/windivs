@@ -305,6 +305,7 @@ private:
     HDSA menuDsa;
     HACCEL m_hAccel;
     ShellSettings m_settings;
+    SBFOLDERSETTINGS m_deffoldersettings;
 public:
 #if 0
     ULONG InternalAddRef()
@@ -332,6 +333,7 @@ public:
     HRESULT ShowBand(const CLSID &classID, bool vertical);
     HRESULT NavigateToParent();
     HRESULT DoFolderOptions();
+    HRESULT ApplyBrowserDefaultFolderSettings(IShellView *pvs);
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     void RepositionBars();
     HRESULT BuildExplorerBandMenu();
@@ -723,6 +725,7 @@ CShellBrowser::CShellBrowser()
     fHistoryStream = NULL;
     fHistoryBindContext = NULL;
     m_settings.Load();
+    m_deffoldersettings.Load();
     gCabinetState.Load();
 }
 
@@ -802,13 +805,35 @@ HRESULT CShellBrowser::Initialize()
     return S_OK;
 }
 
+HRESULT CShellBrowser::ApplyBrowserDefaultFolderSettings(IShellView *pvs)
+{
+    HRESULT hr;
+    if (pvs)
+    {
+        m_settings.Save();
+        SBFOLDERSETTINGS &sbfs = m_deffoldersettings, defsbfs;
+        if (FAILED(pvs->GetCurrentInfo(&sbfs.FolderSettings)))
+        {
+            defsbfs.InitializeDefaults();
+            sbfs = defsbfs;
+        }
+        hr = CGlobalFolderSettings::SaveBrowserSettings(sbfs);
+    }
+    else
+    {
+        m_settings.Reset();
+        hr = CGlobalFolderSettings::ResetBrowserSettings();
+    }
+    return hr;
+}
+
 HRESULT CShellBrowser::BrowseToPIDL(LPCITEMIDLIST pidl, long flags)
 {
-    CComPtr<IShellFolder>                   newFolder;
-    FOLDERSETTINGS                          newFolderSettings;
-    HRESULT                                 hResult;
-    CLSID                                   clsid;
-    BOOL                                    HasIconViewType;
+    CComPtr<IShellFolder>   newFolder;
+    FOLDERSETTINGS          newFolderSettings = m_deffoldersettings.FolderSettings;
+    HRESULT                 hResult;
+    CLSID                   clsid;
+    BOOL                    HasIconViewType;
 
     // called by shell view to browse to new folder
     // also called by explorer band to navigate to new folder
@@ -822,9 +847,6 @@ HRESULT CShellBrowser::BrowseToPIDL(LPCITEMIDLIST pidl, long flags)
 
     if (HasIconViewType)
         newFolderSettings.ViewMode = FVM_ICON;
-    else
-        newFolderSettings.ViewMode = FVM_DETAILS;
-    newFolderSettings.fFlags = 0;
     hResult = BrowseToPath(newFolder, pidl, &newFolderSettings, flags);
     if (FAILED_UNEXPECTEDLY(hResult))
         return hResult;
@@ -1355,17 +1377,13 @@ HRESULT CShellBrowser::DoFolderOptions()
     if (FAILED_UNEXPECTEDLY(hResult))
         return E_FAIL;
 
-// CORE-11140 : Disabled this bit, because it prevents the folder options from showing.
-//              It returns 'E_NOTIMPL'
-#if 0
-    if (fCurrentShellView != NULL)
+    if (fCurrentShellView)
     {
         hResult = fCurrentShellView->AddPropertySheetPages(
             0, AddFolderOptionsPage, reinterpret_cast<LPARAM>(&m_PropSheet));
         if (FAILED_UNEXPECTEDLY(hResult))
             return E_FAIL;
     }
-#endif
 
     // show sheet
     CStringW strFolderOptions(MAKEINTRESOURCEW(IDS_FOLDER_OPTIONS));
@@ -2132,8 +2150,8 @@ HRESULT STDMETHODCALLTYPE CShellBrowser::Exec(const GUID *pguidCmdGroup, DWORD n
     {
         switch (nCmdID)
         {
-            case 1:
-                // Reset All Folders option in Folder Options
+            case DVCMDID_RESET_DEFAULTFOLDER_SETTINGS:
+                IUnknown_Exec(fCurrentShellView, CGID_DefView, nCmdID, OLECMDEXECOPT_DODEFAULT, NULL, NULL);
                 break;
         }
     }
@@ -2648,7 +2666,13 @@ LRESULT STDMETHODCALLTYPE CShellBrowser::WndProcBS(HWND hwnd, UINT uMsg, WPARAM 
 
 HRESULT STDMETHODCALLTYPE CShellBrowser::SetAsDefFolderSettings()
 {
-    return E_NOTIMPL;
+    HRESULT hr = E_FAIL;
+    if (fCurrentShellView)
+    {
+        hr = ApplyBrowserDefaultFolderSettings(fCurrentShellView);
+        IUnknown_Exec(fCurrentShellView, CGID_DefView, DVCMDID_SET_DEFAULTFOLDER_SETTINGS, OLECMDEXECOPT_DODEFAULT, NULL, NULL);
+    }
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE CShellBrowser::GetViewRect(RECT *prc)

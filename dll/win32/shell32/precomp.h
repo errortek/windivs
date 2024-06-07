@@ -36,10 +36,13 @@
 #include <powrprof.h>
 #include <winnetwk.h>
 #include <objsafe.h>
+#include <regstr.h>
 
 #include <comctl32_undoc.h>
 #include <shlguid_undoc.h>
 #include <shlobj_undoc.h>
+
+#define SHLWAPI_ISHELLFOLDER_HELPERS
 #include <shlwapi_undoc.h>
 
 #include <shellapi.h>
@@ -144,6 +147,10 @@ HRESULT
 SHELL32_ShowPropertiesDialog(IDataObject *pdtobj);
 HRESULT
 SHELL32_DefaultContextMenuCallBack(IShellFolder *psf, IDataObject *pdo, UINT msg);
+UINT
+MapVerbToDfmCmd(_In_ LPCSTR verba);
+UINT
+GetDfmCmd(_In_ IContextMenu *pCM, _In_ LPCSTR verba);
 #define SHELL_ExecuteControlPanelCPL(hwnd, cpl) SHRunControlPanel((cpl), (hwnd))
 
 // CStubWindow32 --- The owner window of file property sheets.
@@ -221,5 +228,27 @@ BOOL PathIsDotOrDotDotW(_In_ LPCWSTR pszPath);
 BOOL PathIsValidElement(_In_ LPCWSTR pszPath);
 BOOL PathIsDosDevice(_In_ LPCWSTR pszName);
 HRESULT SHILAppend(_Inout_ LPITEMIDLIST pidl, _Inout_ LPITEMIDLIST *ppidl);
+
+EXTERN_C HRESULT
+IUnknown_InitializeCommand(
+    _In_ IUnknown *pUnk,
+    _In_ PCWSTR pszCommandName,
+    _In_opt_ IPropertyBag *pPB);
+EXTERN_C HRESULT
+InvokeIExecuteCommand(
+    _In_ IExecuteCommand *pEC,
+    _In_ PCWSTR pszCommandName,
+    _In_opt_ IPropertyBag *pPB,
+    _In_opt_ IShellItemArray *pSIA,
+    _In_opt_ LPCMINVOKECOMMANDINFOEX pICI,
+    _In_opt_ IUnknown *pSite);
+EXTERN_C HRESULT
+InvokeIExecuteCommandWithDataObject(
+    _In_ IExecuteCommand *pEC,
+    _In_ PCWSTR pszCommandName,
+    _In_opt_ IPropertyBag *pPB,
+    _In_ IDataObject *pDO,
+    _In_opt_ LPCMINVOKECOMMANDINFOEX pICI,
+    _In_opt_ IUnknown *pSite);
 
 #endif /* _PRECOMP_H__ */

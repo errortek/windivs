@@ -1329,15 +1329,14 @@ CmLoadKey(
 NTSTATUS
 NTAPI
 CmUnloadKey(
-    IN PCM_KEY_CONTROL_BLOCK Kcb,
-    IN ULONG Flags
+    _In_ PCM_KEY_CONTROL_BLOCK Kcb,
+    _In_ ULONG Flags
 );
 
 ULONG
 NTAPI
 CmpEnumerateOpenSubKeys(
     _In_ PCM_KEY_CONTROL_BLOCK RootKcb,
-    _In_ BOOLEAN LockHeldExclusively,
     _In_ BOOLEAN RemoveEmptyCacheEntries,
     _In_ BOOLEAN DereferenceOpenedEntries
 );

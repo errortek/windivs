@@ -80,6 +80,16 @@ static const struct _StaticInvokeCommandMap_
     { "moveto",          FCIDM_SHVIEW_MOVETO },
 };
 
+UINT MapVerbToDfmCmd(_In_ LPCSTR verba)
+{
+    for (UINT i = 0; i < _countof(g_StaticInvokeCmdMap); ++i)
+    {
+        if (!lstrcmpiA(g_StaticInvokeCmdMap[i].szStringVerb, verba))
+            return (int)g_StaticInvokeCmdMap[i].DfmCmd;
+    }
+    return 0;
+}
+
 class CDefaultContextMenu :
     public CComObjectRootEx<CComMultiThreadModelNoCS>,
     public IContextMenu3,
@@ -1294,7 +1304,17 @@ CDefaultContextMenu::InvokeRegVerb(
         if (lpcmi->fMask & CMIC_MASK_PTINVOKE)
             pPtl = (POINTL*)&lpcmi->ptInvoke;
 
-        // TODO: IExecuteCommand
+        CComPtr<IExecuteCommand> pEC;
+        hr = SHELL_GetRegCLSID(VerbKey, L"command", L"DelegateExecute", clsid);
+        if (SUCCEEDED(hr))
+            hr = CoCreateInstance(clsid, NULL, CLSCTX_ALL, IID_PPV_ARG(IExecuteCommand, &pEC));
+        if (SUCCEEDED(hr))
+        {
+            CComPtr<IPropertyBag> pPB;
+            SHCreatePropertyBagOnRegKey(VerbKey, NULL, STGM_READ, IID_PPV_ARG(IPropertyBag, &pPB));
+            return InvokeIExecuteCommandWithDataObject(pEC, pEntry->Verb.GetString(), pPB, m_pDataObj,
+                                                       lpcmi, static_cast<IContextMenu*>(this));
+        }
 
         CComPtr<IDropTarget> pDT;
         hr = SHELL_GetRegCLSID(VerbKey, L"DropTarget", L"CLSID", clsid);
@@ -1302,7 +1322,10 @@ CDefaultContextMenu::InvokeRegVerb(
             hr = CoCreateInstance(clsid, NULL, CLSCTX_ALL, IID_PPV_ARG(IDropTarget, &pDT));
         if (SUCCEEDED(hr))
         {
+            CComPtr<IPropertyBag> pPB;
+            SHCreatePropertyBagOnRegKey(VerbKey, NULL, STGM_READ, IID_PPV_ARG(IPropertyBag, &pPB));
             IUnknown_SetSite(pDT, static_cast<IContextMenu*>(this));
+            IUnknown_InitializeCommand(pDT, pEntry->Verb.GetString(), pPB);
             hr = SHSimulateDrop(pDT, m_pDataObj, KeyState, pPtl, NULL);
             IUnknown_SetSite(pDT, NULL);
             return hr;
