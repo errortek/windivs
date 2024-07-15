@@ -164,6 +164,8 @@ public:
     END_MSG_MAP()
 };
 
+void PostCabinetMessage(UINT Msg, WPARAM wParam, LPARAM lParam);
+
 HRESULT
 Shell_TranslateIDListAlias(
     _In_ LPCITEMIDLIST pidl,
@@ -228,6 +230,9 @@ BOOL PathIsDotOrDotDotW(_In_ LPCWSTR pszPath);
 BOOL PathIsValidElement(_In_ LPCWSTR pszPath);
 BOOL PathIsDosDevice(_In_ LPCWSTR pszName);
 HRESULT SHILAppend(_Inout_ LPITEMIDLIST pidl, _Inout_ LPITEMIDLIST *ppidl);
+
+PIDLIST_ABSOLUTE SHELL_CIDA_ILCloneFull(_In_ const CIDA *pCIDA, _In_ UINT Index);
+PIDLIST_ABSOLUTE SHELL_DataObject_ILCloneFullItem(_In_ IDataObject *pDO, _In_ UINT Index);
 
 EXTERN_C HRESULT
 IUnknown_InitializeCommand(

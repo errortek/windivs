@@ -254,6 +254,7 @@ private:
     void _HandleStatusBarResize(int width);
     void _ForceStatusBarResize();
     void _DoCopyToMoveToFolder(BOOL bCopy);
+    BOOL IsDesktop() const { return m_FolderSettings.fFlags & FWF_DESKTOP; }
 
 public:
     CDefView();
@@ -723,6 +724,17 @@ void CDefView::UpdateStatusbar()
         m_pShellBrowser->SendControlMsg(FCW_STATUS, SB_SETICON, 2, pIcon, &lResult);
         m_pShellBrowser->SendControlMsg(FCW_STATUS, SB_SETTEXT, 2, (LPARAM)szPartText, &lResult);
     }
+
+    SFGAOF att = 0;
+    if (cSelectedItems > 0)
+    {
+        UINT maxquery = 42; // Checking the attributes can be slow, only check small selections (_DoCopyToMoveToFolder will verify the full array)
+        att = SFGAO_CANCOPY | SFGAO_CANMOVE;
+        if (cSelectedItems <= maxquery && (!GetSelections() || FAILED(m_pSFParent->GetAttributesOf(m_cidl, m_apidl, &att))))
+            att = 0;
+    }
+    m_pShellBrowser->SendControlMsg(FCW_TOOLBAR, TB_ENABLEBUTTON, FCIDM_SHVIEW_COPYTO, (att & SFGAO_CANCOPY) != 0, &lResult);
+    m_pShellBrowser->SendControlMsg(FCW_TOOLBAR, TB_ENABLEBUTTON, FCIDM_SHVIEW_MOVETO, (att & SFGAO_CANMOVE) != 0, &lResult);
 }
 
 LRESULT CDefView::OnUpdateStatusbar(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
@@ -802,7 +814,8 @@ BOOL CDefView::CreateList()
     if (m_FolderSettings.fFlags & FWF_FULLROWSELECT)
         ListExStyle |= LVS_EX_FULLROWSELECT;
 
-    if (m_FolderSettings.fFlags & FWF_SINGLECLICKACTIVATE)
+    if ((m_FolderSettings.fFlags & FWF_SINGLECLICKACTIVATE) ||
+        (!SHELL_GetSetting(SSF_DOUBLECLICKINWEBVIEW, fDoubleClickInWebView) && !SHELL_GetSetting(SSF_WIN95CLASSIC, fWin95Classic)))
         ListExStyle |= LVS_EX_TRACKSELECT | LVS_EX_ONECLICKACTIVATE;
 
     if (m_FolderSettings.fFlags & FWF_NOCOLUMNHEADER)
@@ -1394,28 +1407,17 @@ HRESULT CDefView::FillList(BOOL IsRefreshCommand)
     HRESULT       hRes;
     HDPA          hdpa;
     DWORD         dFlags = SHCONTF_NONFOLDERS | SHCONTF_FOLDERS;
-    DWORD dwValue, cbValue;
 
     TRACE("%p\n", this);
 
-    // determine if there is a setting to show all the hidden files/folders
-    dwValue = 1;
-    cbValue = sizeof(dwValue);
-    SHGetValueW(HKEY_CURRENT_USER,
-                L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
-                L"Hidden", NULL, &dwValue, &cbValue);
-    if (dwValue == 1)
+    SHELLSTATE shellstate;
+    SHGetSetSettings(&shellstate, SSF_SHOWALLOBJECTS | SSF_SHOWSUPERHIDDEN, FALSE);
+    if (shellstate.fShowAllObjects)
     {
         dFlags |= SHCONTF_INCLUDEHIDDEN;
         m_ListView.SendMessageW(LVM_SETCALLBACKMASK, LVIS_CUT, 0);
     }
-
-    dwValue = 0;
-    cbValue = sizeof(dwValue);
-    SHGetValueW(HKEY_CURRENT_USER,
-                L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
-                L"ShowSuperHidden", NULL, &dwValue, &cbValue);
-    if (dwValue)
+    if (shellstate.fShowSuperHidden)
     {
         dFlags |= SHCONTF_INCLUDESUPERHIDDEN;
         m_ListView.SendMessageW(LVM_SETCALLBACKMASK, LVIS_CUT, 0);
@@ -1674,7 +1676,7 @@ LRESULT CDefView::OnCreate(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandl
 
     // A folder is special if it is the Desktop folder,
     // a network folder, or a Control Panel folder
-    m_isParentFolderSpecial = _ILIsDesktop(m_pidlParent) || _ILIsNetHood(m_pidlParent)
+    m_isParentFolderSpecial = IsDesktop() || _ILIsNetHood(m_pidlParent)
         || _ILIsControlPanel(ILFindLastID(m_pidlParent));
 
     // Only force StatusBar part refresh if the state
@@ -1947,15 +1949,18 @@ LRESULT CDefView::DoColumnContextMenu(LPARAM lParam)
 */
 UINT CDefView::GetSelections()
 {
-    SHFree(m_apidl);
-
-    m_cidl = m_ListView.GetSelectedCount();
-    m_apidl = static_cast<PCUITEMID_CHILD*>(SHAlloc(m_cidl * sizeof(PCUITEMID_CHILD)));
-    if (!m_apidl)
+    UINT count = m_ListView.GetSelectedCount();
+    if (count > m_cidl || !count || !m_apidl) // !count to free possibly large cache, !m_apidl to make sure m_apidl is a valid pointer
     {
-        m_cidl = 0;
-        return 0;
+        SHFree(m_apidl);
+        m_apidl = static_cast<PCUITEMID_CHILD*>(SHAlloc(count * sizeof(PCUITEMID_CHILD)));
+        if (!m_apidl)
+        {
+            m_cidl = 0;
+            return 0;
+        }
     }
+    m_cidl = count;
 
     TRACE("-- Items selected =%u\n", m_cidl);
 
@@ -2025,8 +2030,7 @@ HRESULT CDefView::OpenSelectedItems()
     UINT uCommand;
     HRESULT hResult;
 
-    m_cidl = m_ListView.GetSelectedCount();
-    if (m_cidl == 0)
+    if (m_ListView.GetSelectedCount() == 0)
         return S_OK;
 
     hResult = OnDefaultCommand();
@@ -2100,9 +2104,9 @@ LRESULT CDefView::OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &b
         }
     }
 
-    m_cidl = m_ListView.GetSelectedCount();
+    UINT count = m_ListView.GetSelectedCount();
     // In case we still have this left over, clean it up
-    hResult = GetItemObject(m_cidl ? SVGIO_SELECTION : SVGIO_BACKGROUND, IID_PPV_ARG(IContextMenu, &m_pCM));
+    hResult = GetItemObject(count ? SVGIO_SELECTION : SVGIO_BACKGROUND, IID_PPV_ARG(IContextMenu, &m_pCM));
     MenuCleanup _(m_pCM, m_hContextMenu);
     if (FAILED_UNEXPECTEDLY(hResult))
         return 0;
@@ -3382,7 +3386,7 @@ HRESULT STDMETHODCALLTYPE CDefView::SelectAndPositionItems(UINT cidl, PCUITEMID_
     m_ListView.SetItemState(-1, 0, LVIS_SELECTED);
 
     int lvIndex;
-    for (UINT i = 0 ; i < m_cidl; i++)
+    for (UINT i = 0 ; i < cidl; i++)
     {
         lvIndex = LV_FindItemByPidl(apidl[i]);
         if (lvIndex != -1)
