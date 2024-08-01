@@ -27,7 +27,6 @@ class CExplorerBand :
     public IDropTarget,
     public CWindowImpl<CExplorerBand, CWindow, CControlWinTraits>
 {
-
 private:
     class NodeInfo
     {
@@ -77,6 +76,7 @@ private:
     LRESULT OnShellEvent(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
     LRESULT OnSetFocus(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
     LRESULT OnKillFocus(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
+    LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
 
     // *** Helper functions ***
     NodeInfo* GetNodeInfo(HTREEITEM hItem);
@@ -94,9 +94,6 @@ private:
         _In_ BOOL bSort);
     BOOL InsertSubitems(HTREEITEM hItem, NodeInfo *pNodeInfo);
     BOOL NavigateToPIDL(LPCITEMIDLIST dest, HTREEITEM *item, BOOL bExpand, BOOL bInsert, BOOL bSelect);
-    BOOL DeleteItem(LPCITEMIDLIST toDelete);
-    BOOL RenameItem(HTREEITEM toRename, LPCITEMIDLIST newPidl);
-    BOOL RefreshTreePidl(HTREEITEM tree, LPCITEMIDLIST pidlParent);
     BOOL NavigateToCurrentFolder();
     HRESULT GetCurrentLocation(PIDLIST_ABSOLUTE &pidl);
     HRESULT IsCurrentLocation(PCIDLIST_ABSOLUTE pidl);
@@ -104,6 +101,12 @@ private:
         _In_opt_ LPCITEMIDLIST pidl0,
         _In_opt_ LPCITEMIDLIST pidl1,
         _In_ LONG lEvent);
+    void Refresh();
+    void RefreshRecurse(_In_ HTREEITEM hItem);
+    BOOL IsTreeItemInEnum(_In_ HTREEITEM hItem, _In_ IEnumIDList *pEnum);
+    BOOL TreeItemHasThisChild(_In_ HTREEITEM hItem, _In_ PCITEMID_CHILD pidlChild);
+    HRESULT GetItemEnum(_Out_ CComPtr<IEnumIDList>& pEnum, _In_ HTREEITEM hItem);
+    BOOL ItemHasAnyChild(_In_ HTREEITEM hItem);
 
     // *** Tree item sorting callback ***
     static int CALLBACK CompareTreeItems(LPARAM p1, LPARAM p2, LPARAM p3);
@@ -157,11 +160,17 @@ public:
     STDMETHOD(Select)(long paramC) override;
 
     // *** INamespaceProxy ***
-    STDMETHOD(GetNavigateTarget)(long paramC, long param10, long param14) override;
-    STDMETHOD(Invoke)(long paramC) override;
-    STDMETHOD(OnSelectionChanged)(long paramC) override;
-    STDMETHOD(RefreshFlags)(long paramC, long param10, long param14) override;
-    STDMETHOD(CacheItem)(long paramC) override;
+    STDMETHOD(GetNavigateTarget)(
+        _In_ PCIDLIST_ABSOLUTE pidl,
+        _Out_ PIDLIST_ABSOLUTE ppidlTarget,
+        _Out_ ULONG *pulAttrib) override;
+    STDMETHOD(Invoke)(_In_ PCIDLIST_ABSOLUTE pidl) override;
+    STDMETHOD(OnSelectionChanged)(_In_ PCIDLIST_ABSOLUTE pidl) override;
+    STDMETHOD(RefreshFlags)(
+        _Out_ DWORD *pdwStyle,
+        _Out_ DWORD *pdwExStyle,
+        _Out_ DWORD *dwEnum) override;
+    STDMETHOD(CacheItem)(_In_ PCIDLIST_ABSOLUTE pidl) override;
 
     // *** IDispatch methods ***
     STDMETHOD(GetTypeInfoCount)(UINT *pctinfo) override;
@@ -205,6 +214,7 @@ public:
         MESSAGE_HANDLER(WM_USER_SHELLEVENT, OnShellEvent)
         MESSAGE_HANDLER(WM_RBUTTONDOWN, ContextMenuHack)
         MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
+        MESSAGE_HANDLER(WM_TIMER, OnTimer)
         // MESSAGE_HANDLER(WM_KILLFOCUS, OnKillFocus)
     END_MSG_MAP()
 };
