@@ -104,7 +104,7 @@ CheckUnattendedSetup(
 
     INF_FreeData(Value);
 
-    /* Search for 'DestinationDiskNumber' in the 'Unattend' section */
+    /* Search for 'DestinationDiskNumber' */
     if (!SpInfFindFirstLine(UnattendInf, L"Unattend", L"DestinationDiskNumber", &Context))
     {
         DPRINT("SpInfFindFirstLine() failed for key 'DestinationDiskNumber'\n");
@@ -119,7 +119,7 @@ CheckUnattendedSetup(
 
     pSetupData->DestinationDiskNumber = (LONG)IntValue;
 
-    /* Search for 'DestinationPartitionNumber' in the 'Unattend' section */
+    /* Search for 'DestinationPartitionNumber' */
     if (!SpInfFindFirstLine(UnattendInf, L"Unattend", L"DestinationPartitionNumber", &Context))
     {
         DPRINT("SpInfFindFirstLine() failed for key 'DestinationPartitionNumber'\n");
@@ -134,56 +134,47 @@ CheckUnattendedSetup(
 
     pSetupData->DestinationPartitionNumber = (LONG)IntValue;
 
-    /* Search for 'InstallationDirectory' in the 'Unattend' section (optional) */
+    /* Search for 'InstallationDirectory' (optional) */
     if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"InstallationDirectory", &Context))
     {
-        /* Get pointer 'InstallationDirectory' key */
-        if (!INF_GetData(&Context, NULL, &Value))
+        if (INF_GetData(&Context, NULL, &Value))
+        {
+            RtlStringCchCopyW(pSetupData->InstallationDirectory,
+                              ARRAYSIZE(pSetupData->InstallationDirectory),
+                              Value);
+            INF_FreeData(Value);
+        }
+        else
         {
             DPRINT("INF_GetData() failed for key 'InstallationDirectory'\n");
-            goto Quit;
         }
-
-        RtlStringCchCopyW(pSetupData->InstallationDirectory,
-                          ARRAYSIZE(pSetupData->InstallationDirectory),
-                          Value);
-
-        INF_FreeData(Value);
     }
 
     IsUnattendedSetup = TRUE;
     DPRINT("Running unattended setup\n");
 
-    /* Search for 'MBRInstallType' in the 'Unattend' section */
-    pSetupData->MBRInstallType = -1;
-    if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"MBRInstallType", &Context))
+    /* Search for 'BootLoaderLocation' (optional) */
+    if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"BootLoaderLocation", &Context))
     {
         if (SpInfGetIntField(&Context, 1, &IntValue))
-        {
-            pSetupData->MBRInstallType = IntValue;
-        }
+            pSetupData->BootLoaderLocation = IntValue;
     }
 
-    /* Search for 'FormatPartition' in the 'Unattend' section */
-    pSetupData->FormatPartition = 0;
+    /* Search for 'FormatPartition' (optional) */
     if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"FormatPartition", &Context))
     {
         if (SpInfGetIntField(&Context, 1, &IntValue))
-        {
             pSetupData->FormatPartition = IntValue;
-        }
     }
 
-    pSetupData->AutoPartition = 0;
+    /* Search for 'AutoPartition' (optional) */
     if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"AutoPartition", &Context))
     {
         if (SpInfGetIntField(&Context, 1, &IntValue))
-        {
             pSetupData->AutoPartition = IntValue;
-        }
     }
 
-    /* Search for LocaleID in the 'Unattend' section */
+    /* Search for 'LocaleID' (optional) */
     if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"LocaleID", &Context))
     {
         if (INF_GetData(&Context, NULL, &Value))
@@ -193,17 +184,14 @@ CheckUnattendedSetup(
                                 ARRAYSIZE(pSetupData->LocaleID),
                                 L"%08lx", Id);
             INF_FreeData(Value);
-       }
+        }
     }
 
-    /* Search for FsType in the 'Unattend' section */
-    pSetupData->FsType = 0;
+    /* Search for 'FsType' (optional) */
     if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"FsType", &Context))
     {
         if (SpInfGetIntField(&Context, 1, &IntValue))
-        {
             pSetupData->FsType = IntValue;
-        }
     }
 
 Quit:
@@ -707,7 +695,8 @@ InitSystemPartition(
      * In all cases, whether or not we are going to perform a formatting,
      * we must perform a filesystem check of the system partition.
      */
-    SystemPartition->NeedsCheck = TRUE;
+    if (SystemPartition->Volume)
+        SystemPartition->Volume->NeedsCheck = TRUE;
 
     return TRUE;
 }
@@ -731,8 +720,7 @@ IsValidInstallDirectory(
     if (!*p || (IS_PATH_SEPARATOR(*p) && !*(p + 1)))
         return FALSE;
 
-    /* The path must contain only valid characters (alpha-numeric,
-     * '.', '\\', '-' and '_'). Spaces are not accepted. */
+    /* The path must contain only valid characters */
     for (p = InstallDir; *p; ++p)
     {
         if (!IS_VALID_INSTALL_PATH_CHAR(*p))
@@ -807,23 +795,21 @@ IsValidInstallDirectory(
 
 NTSTATUS
 InitDestinationPaths(
-    IN OUT PUSETUP_DATA pSetupData,
-    IN PCWSTR InstallationDir,
-    IN PPARTENTRY PartEntry)    // FIXME: HACK!
+    _Inout_ PUSETUP_DATA pSetupData,
+    _In_ PCWSTR InstallationDir,
+    _In_ PVOLENTRY Volume)
 {
     NTSTATUS Status;
+    PPARTENTRY PartEntry = Volume->PartEntry;
     PDISKENTRY DiskEntry = PartEntry->DiskEntry;
-    WCHAR PathBuffer[MAX_PATH];
+    WCHAR PathBuffer[RTL_NUMBER_OF_FIELD(VOLINFO, DeviceName) + 1];
 
     ASSERT(PartEntry->IsPartitioned && PartEntry->PartitionNumber != 0);
 
     /* Create 'pSetupData->DestinationRootPath' string */
     RtlFreeUnicodeString(&pSetupData->DestinationRootPath);
-    Status = RtlStringCchPrintfW(PathBuffer, ARRAYSIZE(PathBuffer),
-                     L"\\Device\\Harddisk%lu\\Partition%lu\\",
-                     DiskEntry->DiskNumber,
-                     PartEntry->PartitionNumber);
-
+    Status = RtlStringCchPrintfW(PathBuffer, _countof(PathBuffer),
+                                 L"%s\\", Volume->Info.DeviceName);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("RtlStringCchPrintfW() failed with status 0x%08lx\n", Status);
@@ -1022,6 +1008,14 @@ InitializeSetup(
         DPRINT1("SourceRootPath (1): '%wZ'\n", &pSetupData->SourceRootPath);
         DPRINT1("SourceRootDir (1): '%wZ'\n", &pSetupData->SourceRootDir);
 
+        /* Set up default values */
+        pSetupData->DestinationDiskNumber = 0;
+        pSetupData->DestinationPartitionNumber = 1;
+        pSetupData->BootLoaderLocation = 2; // Default to "System partition"
+        pSetupData->FormatPartition = 0;
+        pSetupData->AutoPartition = 0;
+        pSetupData->FsType = 0;
+
         /* Load 'txtsetup.sif' from the installation media */
         Error = LoadSetupInf(pSetupData);
         if (Error != ERROR_SUCCESS)
@@ -1032,6 +1026,17 @@ InitializeSetup(
         DPRINT1("SourcePath (2): '%wZ'\n", &pSetupData->SourcePath);
         DPRINT1("SourceRootPath (2): '%wZ'\n", &pSetupData->SourceRootPath);
         DPRINT1("SourceRootDir (2): '%wZ'\n", &pSetupData->SourceRootDir);
+
+        /* Retrieve the target machine architecture type */
+        // FIXME: This should be determined at runtime!!
+        // FIXME: Allow for (pre-)installing on an architecture
+        //        different from the current one?
+#if defined(SARCH_XBOX)
+        pSetupData->ArchType = ARCH_Xbox;
+// #elif defined(SARCH_PC98)
+#else // TODO: Arc, UEFI
+        pSetupData->ArchType = (IsNEC_98 ? ARCH_NEC98x86 : ARCH_PcAT);
+#endif
 
         return ERROR_SUCCESS;
     }

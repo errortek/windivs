@@ -28,8 +28,6 @@
 
 /* Bitmaps */
 #define IDB_REACTOS                 131
-#define IDB_REACTOS_WORKSTATION     400
-#define IDB_REACTOS_SERVER          401
 #define IDB_LINEBAR                 138
 #define IDB_SHELL_IEXPLORE_LG       204
 #define IDB_SHELL_IEXPLORE_LG_HOT   205
@@ -878,6 +876,7 @@
 #define IDM_COPYHERE 0x7
 #define IDM_MOVEHERE 0x8
 #define IDM_LINKHERE 0xB
+#define IDM_DVSELECT 0x104
 
 #define IDM_MYDOCUMENTS 516
 #define IDM_MYPICTURES 518

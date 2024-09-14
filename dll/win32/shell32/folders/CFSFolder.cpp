@@ -14,8 +14,20 @@ WINE_DEFAULT_DEBUG_CHANNEL (shell);
 
 static HRESULT SHELL32_GetCLSIDForDirectory(LPCWSTR pwszDir, LPCWSTR KeyName, CLSID* pclsidFolder);
 
+static LPCWSTR GetItemFileName(PCUITEMID_CHILD pidl, LPWSTR Buf, UINT cchMax)
+{
+    FileStructW* pDataW = _ILGetFileStructW(pidl);
+    if (pDataW)
+        return pDataW->wszName;
+    LPPIDLDATA pdata = _ILGetDataPointer(pidl);
+    if ((pdata->type & PT_VALUEW) == PT_VALUEW)
+        return (LPWSTR)pdata->u.file.szNames;
+    if (_ILSimpleGetTextW(pidl, Buf, cchMax))
+        return Buf;
+    return NULL;
+}
 
-HKEY OpenKeyFromFileType(LPWSTR pExtension, LPCWSTR KeyName)
+static HKEY OpenKeyFromFileType(LPCWSTR pExtension, LPCWSTR KeyName)
 {
     HKEY hkey;
 
@@ -45,7 +57,7 @@ HKEY OpenKeyFromFileType(LPWSTR pExtension, LPCWSTR KeyName)
     return hkey;
 }
 
-LPWSTR ExtensionFromPidl(PCUIDLIST_RELATIVE pidl)
+static LPCWSTR ExtensionFromPidl(PCUIDLIST_RELATIVE pidl, LPWSTR Buf, UINT cchMax)
 {
     if (!_ILIsValue(pidl))
     {
@@ -53,23 +65,17 @@ LPWSTR ExtensionFromPidl(PCUIDLIST_RELATIVE pidl)
         return NULL;
     }
 
-    FileStructW* pDataW = _ILGetFileStructW(pidl);
-    if (!pDataW)
-    {
-        ERR("Invalid pidl!\n");
-        return NULL;
-    }
-
-    LPWSTR pExtension = PathFindExtensionW(pDataW->wszName);
+    LPCWSTR name = GetItemFileName(pidl, Buf, cchMax);
+    LPCWSTR pExtension = name ? PathFindExtensionW(name) : NULL;
     if (!pExtension || *pExtension == UNICODE_NULL)
     {
-        WARN("No extension for %S!\n", pDataW->wszName);
+        WARN("No extension for %S!\n", name);
         return NULL;
     }
     return pExtension;
 }
 
-HRESULT GetCLSIDForFileTypeFromExtension(LPWSTR pExtension, LPCWSTR KeyName, CLSID* pclsid)
+static HRESULT GetCLSIDForFileTypeFromExtension(LPCWSTR pExtension, LPCWSTR KeyName, CLSID* pclsid)
 {
     HKEY hkeyProgId = OpenKeyFromFileType(pExtension, KeyName);
     if (!hkeyProgId)
@@ -126,7 +132,8 @@ HRESULT GetCLSIDForFileTypeFromExtension(LPWSTR pExtension, LPCWSTR KeyName, CLS
 
 HRESULT GetCLSIDForFileType(PCUIDLIST_RELATIVE pidl, LPCWSTR KeyName, CLSID* pclsid)
 {
-    LPWSTR pExtension = ExtensionFromPidl(pidl);
+    WCHAR buf[256];
+    LPCWSTR pExtension = ExtensionFromPidl(pidl, buf, _countof(buf));
     if (!pExtension)
         return S_FALSE;
 
@@ -289,7 +296,8 @@ HRESULT CFSExtractIcon_CreateInstance(IShellFolder * psf, LPCITEMIDLIST pidl, RE
     }
     else
     {
-        LPWSTR pExtension = ExtensionFromPidl(pidl);
+        WCHAR extbuf[256];
+        LPCWSTR pExtension = ExtensionFromPidl(pidl, extbuf, _countof(extbuf));
         HKEY hkey = pExtension ? OpenKeyFromFileType(pExtension, L"DefaultIcon") : NULL;
         if (!hkey)
             WARN("Could not open DefaultIcon key!\n");
@@ -596,13 +604,33 @@ HRESULT SHELL32_GetFSItemAttributes(IShellFolder * psf, LPCITEMIDLIST pidl, LPDW
 
     BOOL bDirectory = (dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 
+    if (SFGAO_VALIDATE & *pdwAttributes)
+    {
+        STRRET strret;
+        LPWSTR path;
+        if (SUCCEEDED(psf->GetDisplayNameOf(pidl, SHGDN_FORPARSING, &strret)) &&
+            SUCCEEDED(StrRetToStrW(&strret, pidl, &path)))
+        {
+            BOOL exists = PathFileExistsW(path);
+            SHFree(path);
+            if (!exists)
+                return E_FAIL;
+        }
+    }
+
     if (!bDirectory)
     {
         // https://git.reactos.org/?p=reactos.git;a=blob;f=dll/shellext/zipfldr/res/zipfldr.rgs;hb=032b5aacd233cd7b83ab6282aad638c161fdc400#l9
         WCHAR szFileName[MAX_PATH];
         LPWSTR pExtension;
+        BOOL hasName = _ILSimpleGetTextW(pidl, szFileName, _countof(szFileName));
 
-        if (_ILSimpleGetTextW(pidl, szFileName, _countof(szFileName)) && (pExtension = PathFindExtensionW(szFileName)))
+        // Vista+ feature: Hidden files with a leading tilde treated as super-hidden
+        // See https://devblogs.microsoft.com/oldnewthing/20170526-00/?p=96235
+        if (hasName && szFileName[0] == '~' && (dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
+            dwShellAttributes |= SFGAO_HIDDEN | SFGAO_SYSTEM;
+
+        if (hasName && (pExtension = PathFindExtensionW(szFileName)))
         {
             CLSID clsidFile;
             // FIXME: Cache this?
@@ -626,7 +654,7 @@ HRESULT SHELL32_GetFSItemAttributes(IShellFolder * psf, LPCITEMIDLIST pidl, LPDW
                     ::RegCloseKey(hkey);
 
                     // This should be presented as directory!
-                    bDirectory = TRUE;
+                    bDirectory = (dwAttributes & SFGAO_FOLDER) != 0 || dwAttributes == 0;
                     TRACE("Treating '%S' as directory!\n", szFileName);
                 }
             }
@@ -650,10 +678,26 @@ HRESULT SHELL32_GetFSItemAttributes(IShellFolder * psf, LPCITEMIDLIST pidl, LPDW
     }
 
     if (dwFileAttributes & FILE_ATTRIBUTE_HIDDEN)
-        dwShellAttributes |=  SFGAO_HIDDEN;
+        dwShellAttributes |= SFGAO_HIDDEN | SFGAO_GHOSTED;
 
     if (dwFileAttributes & FILE_ATTRIBUTE_READONLY)
-        dwShellAttributes |=  SFGAO_READONLY;
+        dwShellAttributes |= SFGAO_READONLY;
+
+    if (dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
+        dwShellAttributes |= SFGAO_SYSTEM;
+
+    if (dwFileAttributes & FILE_ATTRIBUTE_COMPRESSED)
+        dwShellAttributes |= SFGAO_COMPRESSED;
+
+    if (dwFileAttributes & FILE_ATTRIBUTE_ENCRYPTED)
+        dwShellAttributes |= SFGAO_ENCRYPTED;
+
+    if ((SFGAO_NONENUMERATED & *pdwAttributes) && (dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
+    {
+        SHCONTF shcf = SHELL_GetDefaultFolderEnumSHCONTF();
+        if ((!(shcf & SHCONTF_INCLUDEHIDDEN)) || ((dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) && !(shcf & SHCONTF_INCLUDESUPERHIDDEN)))
+            dwShellAttributes |= SFGAO_NONENUMERATED;
+    }
 
     if (SFGAO_LINK & *pdwAttributes)
     {
