@@ -1773,8 +1773,6 @@ LRESULT CDefView::OnCreate(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandl
 
 // #### Handling of the menus ####
 
-extern "C" DWORD WINAPI SHMenuIndexFromID(HMENU hMenu, UINT uID);
-
 HRESULT CDefView::FillFileMenu()
 {
     HMENU hFileMenu = GetSubmenuByID(m_hMenu, FCIDM_MENU_FILE);
@@ -2047,7 +2045,7 @@ UINT CDefView::GetSelections()
 
     UINT i = 0;
     int lvIndex = -1;
-    while ((lvIndex = m_ListView.GetNextItem(lvIndex,  LVNI_SELECTED)) > -1)
+    while ((lvIndex = m_ListView.GetNextItem(lvIndex, LVNI_SELECTED)) > -1)
     {
         m_apidl[i] = _PidlByItem(lvIndex);
         i++;
@@ -2214,10 +2212,10 @@ LRESULT CDefView::OnContextMenu(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &b
         if (hFocus == m_ListView.m_hWnd || m_ListView.IsChild(hFocus))
         {
             // Is there an item focused and selected?
-            lvIndex = m_ListView.GetNextItem(-1, LVIS_SELECTED|LVIS_FOCUSED);
+            lvIndex = m_ListView.GetNextItem(-1, LVNI_SELECTED | LVNI_FOCUSED);
             // If not, find the first selected item
             if (lvIndex < 0)
-                lvIndex = m_ListView.GetNextItem(-1, LVIS_SELECTED);
+                lvIndex = m_ListView.GetNextItem(-1, LVNI_SELECTED);
         }
 
         // We got something
